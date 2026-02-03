@@ -2,187 +2,290 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Mini FNF HTML</title>
+<title>Mini FNF Engine HTML</title>
 
 <style>
+/* =======================
+   GLOBAL
+======================= */
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
-  background: #111;
+  background: black;
   color: white;
   font-family: Arial, sans-serif;
-  display: flex;
+  overflow: hidden;
+}
+
+/* =======================
+   CANVAS
+======================= */
+canvas {
+  display: none;
+  background: #000;
+}
+
+/* =======================
+   MENUS
+======================= */
+.screen {
+  display: none;
+  width: 100vw;
+  height: 100vh;
   justify-content: center;
   align-items: center;
-  height: 100vh;
+  flex-direction: column;
 }
 
-canvas {
-  background: #000;
-  border: 3px solid white;
-  display: none;
+.screen.active {
+  display: flex;
 }
 
-.menu {
-  text-align: center;
+.title {
+  font-size: 64px;
+  margin-bottom: 30px;
 }
 
-button {
-  background: #ff2f92;
-  border: none;
-  color: white;
-  font-size: 20px;
-  padding: 10px 25px;
+.menu-option {
+  font-size: 28px;
   margin: 10px;
-  cursor: pointer;
+  opacity: 0.6;
 }
 
-button:hover {
-  background: #ff5ab0;
+.menu-option.selected {
+  opacity: 1;
+  color: #ff2f92;
+}
+
+/* =======================
+   WEEK SELECT
+======================= */
+.week-box {
+  font-size: 26px;
+  margin: 15px;
 }
 </style>
 </head>
 
 <body>
 
-<!-- MENÚ -->
-<div id="menu" class="menu">
-  <h1>🎤 MINI FNF</h1>
-  <button onclick="openWeek()">SEMANA 1</button>
+<!-- ENTER SCREEN -->
+<div id="enterScreen" class="screen active">
+  <div class="title">FRIDAY NIGHT HTML</div>
+  <div style="font-size:24px">PRESS ENTER</div>
 </div>
 
-<!-- JUEGO -->
+<!-- MAIN MENU -->
+<div id="mainMenu" class="screen">
+  <div class="title">MAIN MENU</div>
+  <div class="menu-option selected">STORY MODE</div>
+  <div class="menu-option">FREE PLAY</div>
+</div>
+
+<!-- STORY MODE -->
+<div id="storyMenu" class="screen">
+  <div class="title">STORY MODE</div>
+  <div class="week-box selected">WEEK 1</div>
+  <div class="week-box">WEEK 2 (LOCKED)</div>
+</div>
+
+<!-- FREE PLAY -->
+<div id="freeMenu" class="screen">
+  <div class="title">FREE PLAY</div>
+  <div class="week-box selected">TUTORIAL</div>
+</div>
+
+<!-- GAME -->
 <canvas id="game" width="400" height="600"></canvas>
 
 <script>
+/* =======================
+   GLOBAL STATE
+======================= */
+const screens = {
+  enter: document.getElementById("enterScreen"),
+  main: document.getElementById("mainMenu"),
+  story: document.getElementById("storyMenu"),
+  free: document.getElementById("freeMenu")
+};
+
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
-const menu = document.getElementById("menu");
 
-const keys = ["ArrowLeft", "ArrowUp", "ArrowDown", "ArrowRight"];
-const laneX = [50, 130, 210, 290];
+let currentScreen = "enter";
+let menuIndex = 0;
+let weekIndex = 0;
+
+/* =======================
+   GAME DATA
+======================= */
+const keys = ["ArrowLeft","ArrowUp","ArrowDown","ArrowRight"];
+const laneX = [50,130,210,290];
+const hitLineY = 500;
 
 let notes = [];
 let score = 0;
 let gameRunning = false;
-
-const hitLineY = 500;
-
-// ----- SEMANA 1 (chart simple) -----
-const week1 = [
-  { time: 0, dir: 0 },
-  { time: 600, dir: 1 },
-  { time: 1200, dir: 2 },
-  { time: 1800, dir: 3 },
-  { time: 2400, dir: 0 },
-  { time: 3000, dir: 1 },
-  { time: 3600, dir: 2 }
-];
-
 let chartIndex = 0;
 let startTime = 0;
 
-// Abrir semana
-function openWeek() {
-  menu.style.display = "none";
-  canvas.style.display = "block";
-  startGame();
-}
+/* =======================
+   CHARTS
+======================= */
+const charts = {
+  week1: [
+    {time:0,dir:0},
+    {time:600,dir:1},
+    {time:1200,dir:2},
+    {time:1800,dir:3},
+    {time:2400,dir:0},
+    {time:3000,dir:1}
+  ]
+};
 
-// Volver al menú
-function backToMenu() {
-  gameRunning = false;
+/* =======================
+   SCREEN CONTROL
+======================= */
+function showScreen(name){
+  Object.values(screens).forEach(s=>s.classList.remove("active"));
   canvas.style.display = "none";
-  menu.style.display = "block";
+  screens[name].classList.add("active");
+  currentScreen = name;
 }
 
-// Iniciar juego
-function startGame() {
-  notes = [];
-  score = 0;
-  chartIndex = 0;
-  startTime = performance.now();
-  gameRunning = true;
-  requestAnimationFrame(update);
-}
-
-// Input
-window.addEventListener("keydown", (e) => {
-  if (!gameRunning) return;
-
-  // Salir al menú
-  if (e.key === "Escape") {
-    backToMenu();
-    return;
+/* =======================
+   INPUT
+======================= */
+window.addEventListener("keydown", e=>{
+  if(currentScreen==="enter" && e.key==="Enter"){
+    showScreen("main");
+    menuIndex=0;
+    updateMenu();
   }
 
-  for (let i = 0; i < notes.length; i++) {
-    const note = notes[i];
-    if (
-      e.key === keys[note.dir] &&
-      Math.abs(note.y - hitLineY) < 30
-    ) {
-      notes.splice(i, 1);
-      score += 100;
-      break;
-    }
+  else if(currentScreen==="main"){
+    handleMenuInput(e, screens.main.querySelectorAll(".menu-option"), ()=>{
+      if(menuIndex===0) showScreen("story");
+      else showScreen("free");
+    });
+  }
+
+  else if(currentScreen==="story"){
+    handleMenuInput(e, screens.story.querySelectorAll(".week-box"), ()=>{
+      startGame(charts.week1);
+    });
+  }
+
+  else if(currentScreen==="free"){
+    handleMenuInput(e, screens.free.querySelectorAll(".week-box"), ()=>{
+      startGame(charts.week1);
+    });
+  }
+
+  else if(gameRunning){
+    handleGameInput(e);
   }
 });
 
-// Loop principal
-function update(now) {
-  if (!gameRunning) return;
+/* =======================
+   MENU LOGIC
+======================= */
+function handleMenuInput(e, items, onEnter){
+  if(e.key==="ArrowUp") menuIndex--;
+  if(e.key==="ArrowDown") menuIndex++;
+  if(menuIndex<0) menuIndex=items.length-1;
+  if(menuIndex>=items.length) menuIndex=0;
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  items.forEach(i=>i.classList.remove("selected"));
+  items[menuIndex].classList.add("selected");
 
-  const currentTime = now - startTime;
+  if(e.key==="Enter") onEnter();
+}
 
-  // Spawn notas según la semana
-  if (
-    chartIndex < week1.length &&
-    currentTime >= week1[chartIndex].time
-  ) {
-    const dir = week1[chartIndex].dir;
-    notes.push({
-      dir: dir,
-      x: laneX[dir],
-      y: -20
-    });
+function updateMenu(){
+  const items = screens.main.querySelectorAll(".menu-option");
+  items.forEach(i=>i.classList.remove("selected"));
+  items[menuIndex].classList.add("selected");
+}
+
+/* =======================
+   GAME START
+======================= */
+function startGame(chart){
+  showCanvas();
+  notes=[];
+  score=0;
+  chartIndex=0;
+  activeChart=chart;
+  startTime=performance.now();
+  gameRunning=true;
+  requestAnimationFrame(updateGame);
+}
+
+function showCanvas(){
+  Object.values(screens).forEach(s=>s.classList.remove("active"));
+  canvas.style.display="block";
+}
+
+/* =======================
+   GAME INPUT
+======================= */
+function handleGameInput(e){
+  if(e.key==="Escape"){
+    gameRunning=false;
+    showScreen("main");
+    return;
+  }
+
+  for(let i=0;i<notes.length;i++){
+    const n=notes[i];
+    if(e.key===keys[n.dir] && Math.abs(n.y-hitLineY)<30){
+      notes.splice(i,1);
+      score+=100;
+      break;
+    }
+  }
+}
+
+/* =======================
+   GAME LOOP
+======================= */
+let activeChart = [];
+
+function updateGame(now){
+  if(!gameRunning) return;
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const currentTime = now-startTime;
+
+  if(chartIndex<activeChart.length &&
+     currentTime>=activeChart[chartIndex].time){
+    const d=activeChart[chartIndex].dir;
+    notes.push({dir:d,x:laneX[d],y:-20});
     chartIndex++;
   }
 
-  // Línea de golpeo
-  ctx.strokeStyle = "white";
+  ctx.strokeStyle="white";
   ctx.beginPath();
-  ctx.moveTo(0, hitLineY);
-  ctx.lineTo(canvas.width, hitLineY);
+  ctx.moveTo(0,hitLineY);
+  ctx.lineTo(canvas.width,hitLineY);
   ctx.stroke();
 
-  // Flechas fijas
-  ctx.fillStyle = "gray";
-  laneX.forEach(x => {
-    ctx.fillRect(x, hitLineY + 10, 40, 20);
-  });
-
-  // Notas
-  ctx.fillStyle = "cyan";
-  for (let i = notes.length - 1; i >= 0; i--) {
-    const note = notes[i];
-    note.y += 3;
-    ctx.fillRect(note.x, note.y, 40, 20);
-
-    if (note.y > canvas.height) {
-      notes.splice(i, 1);
-    }
+  ctx.fillStyle="cyan";
+  for(let i=notes.length-1;i>=0;i--){
+    notes[i].y+=3;
+    ctx.fillRect(notes[i].x,notes[i].y,40,20);
+    if(notes[i].y>canvas.height) notes.splice(i,1);
   }
 
-  // UI
-  ctx.fillStyle = "white";
-  ctx.font = "16px Arial";
-  ctx.fillText("Semana 1", 10, 20);
-  ctx.fillText("Score: " + score, 10, 40);
-  ctx.fillText("ESC = Menú", 260, 20);
+  ctx.fillStyle="white";
+  ctx.fillText("Score: "+score,10,20);
+  ctx.fillText("ESC = Menu",260,20);
 
-  requestAnimationFrame(update);
+  requestAnimationFrame(updateGame);
 }
 </script>
 </body>
