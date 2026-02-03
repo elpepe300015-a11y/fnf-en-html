@@ -5,51 +5,116 @@
 <title>Mini FNF HTML</title>
 
 <style>
-  body {
-    margin: 0;
-    background: #111;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    font-family: Arial, sans-serif;
-  }
+body {
+  margin: 0;
+  background: #111;
+  color: white;
+  font-family: Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
 
-  canvas {
-    background: #000;
-    border: 3px solid #fff;
-  }
+canvas {
+  background: #000;
+  border: 3px solid white;
+  display: none;
+}
+
+.menu {
+  text-align: center;
+}
+
+button {
+  background: #ff2f92;
+  border: none;
+  color: white;
+  font-size: 20px;
+  padding: 10px 25px;
+  margin: 10px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #ff5ab0;
+}
 </style>
 </head>
 
 <body>
+
+<!-- MENÚ -->
+<div id="menu" class="menu">
+  <h1>🎤 MINI FNF</h1>
+  <button onclick="openWeek()">SEMANA 1</button>
+</div>
+
+<!-- JUEGO -->
 <canvas id="game" width="400" height="600"></canvas>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+const menu = document.getElementById("menu");
 
 const keys = ["ArrowLeft", "ArrowUp", "ArrowDown", "ArrowRight"];
 const laneX = [50, 130, 210, 290];
-const notes = [];
+
+let notes = [];
+let score = 0;
+let gameRunning = false;
 
 const hitLineY = 500;
-let score = 0;
 
-// Crear notas
-function spawnNote() {
-  const dir = Math.floor(Math.random() * 4);
-  notes.push({
-    dir: dir,
-    x: laneX[dir],
-    y: -20
-  });
+// ----- SEMANA 1 (chart simple) -----
+const week1 = [
+  { time: 0, dir: 0 },
+  { time: 600, dir: 1 },
+  { time: 1200, dir: 2 },
+  { time: 1800, dir: 3 },
+  { time: 2400, dir: 0 },
+  { time: 3000, dir: 1 },
+  { time: 3600, dir: 2 }
+];
+
+let chartIndex = 0;
+let startTime = 0;
+
+// Abrir semana
+function openWeek() {
+  menu.style.display = "none";
+  canvas.style.display = "block";
+  startGame();
 }
 
-setInterval(spawnNote, 800);
+// Volver al menú
+function backToMenu() {
+  gameRunning = false;
+  canvas.style.display = "none";
+  menu.style.display = "block";
+}
+
+// Iniciar juego
+function startGame() {
+  notes = [];
+  score = 0;
+  chartIndex = 0;
+  startTime = performance.now();
+  gameRunning = true;
+  requestAnimationFrame(update);
+}
 
 // Input
 window.addEventListener("keydown", (e) => {
+  if (!gameRunning) return;
+
+  // Salir al menú
+  if (e.key === "Escape") {
+    backToMenu();
+    return;
+  }
+
   for (let i = 0; i < notes.length; i++) {
     const note = notes[i];
     if (
@@ -64,8 +129,26 @@ window.addEventListener("keydown", (e) => {
 });
 
 // Loop principal
-function update() {
+function update(now) {
+  if (!gameRunning) return;
+
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const currentTime = now - startTime;
+
+  // Spawn notas según la semana
+  if (
+    chartIndex < week1.length &&
+    currentTime >= week1[chartIndex].time
+  ) {
+    const dir = week1[chartIndex].dir;
+    notes.push({
+      dir: dir,
+      x: laneX[dir],
+      y: -20
+    });
+    chartIndex++;
+  }
 
   // Línea de golpeo
   ctx.strokeStyle = "white";
@@ -87,21 +170,20 @@ function update() {
     note.y += 3;
     ctx.fillRect(note.x, note.y, 40, 20);
 
-    // Miss
     if (note.y > canvas.height) {
       notes.splice(i, 1);
     }
   }
 
-  // Score
+  // UI
   ctx.fillStyle = "white";
   ctx.font = "16px Arial";
-  ctx.fillText("Score: " + score, 10, 20);
+  ctx.fillText("Semana 1", 10, 20);
+  ctx.fillText("Score: " + score, 10, 40);
+  ctx.fillText("ESC = Menú", 260, 20);
 
   requestAnimationFrame(update);
 }
-
-update();
 </script>
 </body>
 </html>
