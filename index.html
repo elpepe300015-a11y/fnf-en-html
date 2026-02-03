@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Mini FNF HTML</title>
+
+<style>
+  body {
+    margin: 0;
+    background: #111;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    font-family: Arial, sans-serif;
+  }
+
+  canvas {
+    background: #000;
+    border: 3px solid #fff;
+  }
+</style>
+</head>
+
+<body>
+<canvas id="game" width="400" height="600"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const keys = ["ArrowLeft", "ArrowUp", "ArrowDown", "ArrowRight"];
+const laneX = [50, 130, 210, 290];
+const notes = [];
+
+const hitLineY = 500;
+let score = 0;
+
+// Crear notas
+function spawnNote() {
+  const dir = Math.floor(Math.random() * 4);
+  notes.push({
+    dir: dir,
+    x: laneX[dir],
+    y: -20
+  });
+}
+
+setInterval(spawnNote, 800);
+
+// Input
+window.addEventListener("keydown", (e) => {
+  for (let i = 0; i < notes.length; i++) {
+    const note = notes[i];
+    if (
+      e.key === keys[note.dir] &&
+      Math.abs(note.y - hitLineY) < 30
+    ) {
+      notes.splice(i, 1);
+      score += 100;
+      break;
+    }
+  }
+});
+
+// Loop principal
+function update() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Línea de golpeo
+  ctx.strokeStyle = "white";
+  ctx.beginPath();
+  ctx.moveTo(0, hitLineY);
+  ctx.lineTo(canvas.width, hitLineY);
+  ctx.stroke();
+
+  // Flechas fijas
+  ctx.fillStyle = "gray";
+  laneX.forEach(x => {
+    ctx.fillRect(x, hitLineY + 10, 40, 20);
+  });
+
+  // Notas
+  ctx.fillStyle = "cyan";
+  for (let i = notes.length - 1; i >= 0; i--) {
+    const note = notes[i];
+    note.y += 3;
+    ctx.fillRect(note.x, note.y, 40, 20);
+
+    // Miss
+    if (note.y > canvas.height) {
+      notes.splice(i, 1);
+    }
+  }
+
+  // Score
+  ctx.fillStyle = "white";
+  ctx.font = "16px Arial";
+  ctx.fillText("Score: " + score, 10, 20);
+
+  requestAnimationFrame(update);
+}
+
+update();
+</script>
+</body>
+</html>
