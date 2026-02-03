@@ -1,8 +1,13 @@
+
+Fnf engine fixed · HTML
+Copiar
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Mini FNF Engine HTML</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini FNF Engine HTML - MEJORADO</title>
 
 <style>
 /* =======================
@@ -26,6 +31,7 @@ body {
 canvas {
   display: none;
   background: #000;
+  margin: 0 auto;
 }
 
 /* =======================
@@ -47,25 +53,44 @@ canvas {
 .title {
   font-size: 64px;
   margin-bottom: 30px;
+  text-shadow: 0 0 10px #ff2f92;
 }
 
-.menu-option {
+.menu-option, .week-box {
   font-size: 28px;
   margin: 10px;
   opacity: 0.6;
+  transition: all 0.2s;
 }
 
-.menu-option.selected {
+.menu-option.selected, .week-box.selected {
   opacity: 1;
   color: #ff2f92;
+  transform: scale(1.1);
 }
 
 /* =======================
-   WEEK SELECT
+   RESULTS SCREEN
 ======================= */
-.week-box {
-  font-size: 26px;
+.result-stat {
+  font-size: 24px;
   margin: 15px;
+}
+
+.result-rank {
+  font-size: 72px;
+  color: #ffff00;
+  margin: 20px;
+  text-shadow: 0 0 20px #ffff00;
+}
+
+@media (max-width: 768px) {
+  .title {
+    font-size: 48px;
+  }
+  .menu-option, .week-box {
+    font-size: 24px;
+  }
 }
 </style>
 </head>
@@ -98,8 +123,19 @@ canvas {
   <div class="week-box selected">TUTORIAL</div>
 </div>
 
+<!-- RESULTS -->
+<div id="resultsScreen" class="screen">
+  <div class="title">RESULTS</div>
+  <div class="result-rank" id="rank">A</div>
+  <div class="result-stat" id="finalScore">Score: 0</div>
+  <div class="result-stat" id="finalCombo">Max Combo: 0</div>
+  <div class="result-stat" id="accuracy">Accuracy: 0%</div>
+  <div class="result-stat" id="stats">Perfect: 0 | Good: 0 | Bad: 0 | Miss: 0</div>
+  <div class="menu-option selected" style="margin-top: 30px">CONTINUE</div>
+</div>
+
 <!-- GAME -->
-<canvas id="game" width="400" height="600"></canvas>
+<canvas id="game"></canvas>
 
 <script>
 /* =======================
@@ -109,184 +145,658 @@ const screens = {
   enter: document.getElementById("enterScreen"),
   main: document.getElementById("mainMenu"),
   story: document.getElementById("storyMenu"),
-  free: document.getElementById("freeMenu")
+  free: document.getElementById("freeMenu"),
+  results: document.getElementById("resultsScreen")
 };
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
+// Estado de menús separado
 let currentScreen = "enter";
-let menuIndex = 0;
-let weekIndex = 0;
+let menuIndices = {
+  main: 0,
+  story: 0,
+  free: 0
+};
+
+// Cacheo de elementos del menú
+let menuElements = null;
 
 /* =======================
    GAME DATA
 ======================= */
-const keys = ["ArrowLeft","ArrowUp","ArrowDown","ArrowRight"];
-const laneX = [50,130,210,290];
-const hitLineY = 500;
+const keys = ["ArrowLeft", "ArrowDown", "ArrowUp", "ArrowRight"];
+const keyColors = ["#c24b99", "#00ffff", "#12fa05", "#f9393f"];
+const keyLabels = ["←", "↓", "↑", "→"];
 
-let notes = [];
-let score = 0;
-let gameRunning = false;
-let chartIndex = 0;
-let startTime = 0;
+// Variables de posición (se calculan dinámicamente)
+let laneX = [50, 130, 210, 290];
+let hitLineY = 500;
+
+// Estado del juego
+let gameState = {
+  notes: [],
+  score: 0,
+  combo: 0,
+  maxCombo: 0,
+  health: 50,
+  running: false,
+  startTime: 0,
+  chartIndex: 0,
+  activeChart: [],
+  stats: {
+    perfect: 0,
+    good: 0,
+    bad: 0,
+    miss: 0
+  }
+};
+
+// Feedback visual
+let feedbackMessages = [];
+
+// Control de frame rate
+let animationFrameId = null;
+let lastFrameTime = 0;
+const targetFPS = 60;
+const frameDelay = 1000 / targetFPS;
+
+// Teclas presionadas
+const keysPressed = new Set();
+
+/* =======================
+   TIMING WINDOWS
+======================= */
+const TIMING = {
+  perfect: 15,
+  good: 30,
+  bad: 50,
+  miss: 70
+};
+
+const TIMING_SCORES = {
+  perfect: 350,
+  good: 200,
+  bad: 50
+};
+
+const MAX_HEALTH = 100;
 
 /* =======================
    CHARTS
 ======================= */
 const charts = {
   week1: [
-    {time:0,dir:0},
-    {time:600,dir:1},
-    {time:1200,dir:2},
-    {time:1800,dir:3},
-    {time:2400,dir:0},
-    {time:3000,dir:1}
+    {time: 500, dir: 0},
+    {time: 1000, dir: 1},
+    {time: 1500, dir: 2},
+    {time: 2000, dir: 3},
+    {time: 2500, dir: 0},
+    {time: 3000, dir: 1},
+    {time: 3500, dir: 2},
+    {time: 4000, dir: 3},
+    {time: 4500, dir: 0},
+    {time: 4700, dir: 1},
+    {time: 5000, dir: 2},
+    {time: 5200, dir: 3},
+    {time: 5500, dir: 0},
+    {time: 5700, dir: 2},
+    {time: 6000, dir: 1},
+    {time: 6300, dir: 3},
+    {time: 6600, dir: 0},
+    {time: 6800, dir: 1},
+    {time: 7000, dir: 2},
+    {time: 7200, dir: 3}
   ]
 };
 
 /* =======================
+   CANVAS RESIZE
+======================= */
+function resizeCanvas() {
+  const maxWidth = 600;
+  const maxHeight = 800;
+  const ratio = 2 / 3;
+  
+  let width = Math.min(window.innerWidth * 0.95, maxWidth);
+  let height = width * (3 / 2);
+  
+  if (height > window.innerHeight * 0.95) {
+    height = window.innerHeight * 0.95;
+    width = height * ratio;
+  }
+  
+  canvas.width = width;
+  canvas.height = height;
+  
+  // Recalcular posiciones
+  const laneWidth = width / 5;
+  laneX = [
+    laneWidth * 0.75,
+    laneWidth * 1.75,
+    laneWidth * 2.75,
+    laneWidth * 3.75
+  ];
+  hitLineY = height * 0.85;
+}
+
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+/* =======================
    SCREEN CONTROL
 ======================= */
-function showScreen(name){
-  Object.values(screens).forEach(s=>s.classList.remove("active"));
+function showScreen(name) {
+  Object.values(screens).forEach(s => s.classList.remove("active"));
   canvas.style.display = "none";
-  screens[name].classList.add("active");
-  currentScreen = name;
+  
+  if (screens[name]) {
+    screens[name].classList.add("active");
+    currentScreen = name;
+    
+    // Resetear selección visual
+    const items = screens[name].querySelectorAll(".menu-option, .week-box");
+    items.forEach((item, i) => {
+      item.classList.toggle("selected", i === 0);
+    });
+    
+    // Resetear índice del menú
+    if (menuIndices.hasOwnProperty(name)) {
+      menuIndices[name] = 0;
+    }
+  }
+}
+
+function showCanvas() {
+  Object.values(screens).forEach(s => s.classList.remove("active"));
+  canvas.style.display = "block";
+  currentScreen = "game";
 }
 
 /* =======================
-   INPUT
+   INPUT - KEYBOARD
 ======================= */
-window.addEventListener("keydown", e=>{
-  if(currentScreen==="enter" && e.key==="Enter"){
+window.addEventListener("keydown", e => {
+  // Prevenir scroll con flechas
+  if (keys.includes(e.key)) {
+    e.preventDefault();
+  }
+  
+  // Evitar repetición de teclas
+  if (keysPressed.has(e.key)) return;
+  keysPressed.add(e.key);
+  
+  // Enter screen
+  if (currentScreen === "enter" && e.key === "Enter") {
     showScreen("main");
-    menuIndex=0;
-    updateMenu();
+    cachearMenuElements();
+    return;
   }
-
-  else if(currentScreen==="main"){
-    handleMenuInput(e, screens.main.querySelectorAll(".menu-option"), ()=>{
-      if(menuIndex===0) showScreen("story");
-      else showScreen("free");
+  
+  // Main menu
+  if (currentScreen === "main") {
+    handleMenuInput(e, "main", menuElements.main, () => {
+      if (menuIndices.main === 0) {
+        showScreen("story");
+      } else {
+        showScreen("free");
+      }
     });
+    return;
   }
-
-  else if(currentScreen==="story"){
-    handleMenuInput(e, screens.story.querySelectorAll(".week-box"), ()=>{
-      startGame(charts.week1);
+  
+  // Story menu
+  if (currentScreen === "story") {
+    handleMenuInput(e, "story", menuElements.story, () => {
+      if (menuIndices.story === 0) {
+        startGame(charts.week1);
+      }
+      // Week 2 está bloqueada
     });
+    return;
   }
-
-  else if(currentScreen==="free"){
-    handleMenuInput(e, screens.free.querySelectorAll(".week-box"), ()=>{
-      startGame(charts.week1);
+  
+  // Free play menu
+  if (currentScreen === "free") {
+    handleMenuInput(e, "free", menuElements.free, () => {
+      if (menuIndices.free === 0) {
+        startGame(charts.week1);
+      }
     });
+    return;
   }
-
-  else if(gameRunning){
+  
+  // Results screen
+  if (currentScreen === "results" && e.key === "Enter") {
+    showScreen("main");
+    return;
+  }
+  
+  // Game input
+  if (gameState.running) {
     handleGameInput(e);
   }
+});
+
+window.addEventListener("keyup", e => {
+  keysPressed.delete(e.key);
 });
 
 /* =======================
    MENU LOGIC
 ======================= */
-function handleMenuInput(e, items, onEnter){
-  if(e.key==="ArrowUp") menuIndex--;
-  if(e.key==="ArrowDown") menuIndex++;
-  if(menuIndex<0) menuIndex=items.length-1;
-  if(menuIndex>=items.length) menuIndex=0;
-
-  items.forEach(i=>i.classList.remove("selected"));
-  items[menuIndex].classList.add("selected");
-
-  if(e.key==="Enter") onEnter();
+function cachearMenuElements() {
+  menuElements = {
+    main: screens.main.querySelectorAll(".menu-option"),
+    story: screens.story.querySelectorAll(".week-box"),
+    free: screens.free.querySelectorAll(".week-box")
+  };
 }
 
-function updateMenu(){
-  const items = screens.main.querySelectorAll(".menu-option");
-  items.forEach(i=>i.classList.remove("selected"));
-  items[menuIndex].classList.add("selected");
+function handleMenuInput(e, menuName, items, onEnter) {
+  if (!items || items.length === 0) return;
+  
+  let changed = false;
+  
+  if (e.key === "ArrowUp") {
+    menuIndices[menuName]--;
+    changed = true;
+  }
+  if (e.key === "ArrowDown") {
+    menuIndices[menuName]++;
+    changed = true;
+  }
+  
+  if (changed) {
+    // Wrap around con módulo
+    menuIndices[menuName] = ((menuIndices[menuName] % items.length) + items.length) % items.length;
+    
+    // Actualizar visual
+    items.forEach((item, i) => {
+      item.classList.toggle("selected", i === menuIndices[menuName]);
+    });
+  }
+  
+  if (e.key === "Enter" && onEnter) {
+    onEnter();
+  }
 }
 
 /* =======================
    GAME START
 ======================= */
-function startGame(chart){
+function startGame(chart) {
   showCanvas();
-  notes=[];
-  score=0;
-  chartIndex=0;
-  activeChart=chart;
-  startTime=performance.now();
-  gameRunning=true;
-  requestAnimationFrame(updateGame);
-}
-
-function showCanvas(){
-  Object.values(screens).forEach(s=>s.classList.remove("active"));
-  canvas.style.display="block";
+  resizeCanvas();
+  
+  // Reset game state
+  gameState = {
+    notes: [],
+    score: 0,
+    combo: 0,
+    maxCombo: 0,
+    health: 50,
+    running: true,
+    startTime: performance.now(),
+    chartIndex: 0,
+    activeChart: chart,
+    stats: {
+      perfect: 0,
+      good: 0,
+      bad: 0,
+      miss: 0
+    }
+  };
+  
+  feedbackMessages = [];
+  lastFrameTime = performance.now();
+  
+  // Iniciar loop
+  animationFrameId = requestAnimationFrame(updateGame);
 }
 
 /* =======================
    GAME INPUT
 ======================= */
-function handleGameInput(e){
-  if(e.key==="Escape"){
-    gameRunning=false;
+function handleGameInput(e) {
+  if (e.key === "Escape") {
+    stopGame();
     showScreen("main");
     return;
   }
-
-  for(let i=0;i<notes.length;i++){
-    const n=notes[i];
-    if(e.key===keys[n.dir] && Math.abs(n.y-hitLineY)<30){
-      notes.splice(i,1);
-      score+=100;
-      break;
+  
+  const keyIndex = keys.indexOf(e.key);
+  if (keyIndex === -1) return;
+  
+  let hitNote = false;
+  let closestDistance = Infinity;
+  let closestIndex = -1;
+  
+  // Encontrar la nota más cercana en el carril correcto
+  for (let i = 0; i < gameState.notes.length; i++) {
+    const note = gameState.notes[i];
+    const distance = Math.abs(note.y - hitLineY);
+    
+    if (note.dir === keyIndex && distance < TIMING.miss) {
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = i;
+      }
     }
   }
+  
+  // Si encontramos una nota, procesarla
+  if (closestIndex !== -1) {
+    gameState.notes.splice(closestIndex, 1);
+    hitNote = true;
+    
+    // Calcular puntuación según timing
+    if (closestDistance < TIMING.perfect) {
+      gameState.score += TIMING_SCORES.perfect;
+      gameState.combo++;
+      gameState.health = Math.min(MAX_HEALTH, gameState.health + 2);
+      gameState.stats.perfect++;
+      showFeedback("PERFECT!", "#00ff00", closestDistance);
+    } else if (closestDistance < TIMING.good) {
+      gameState.score += TIMING_SCORES.good;
+      gameState.combo++;
+      gameState.health = Math.min(MAX_HEALTH, gameState.health + 1);
+      gameState.stats.good++;
+      showFeedback("GOOD", "#ffff00", closestDistance);
+    } else if (closestDistance < TIMING.bad) {
+      gameState.score += TIMING_SCORES.bad;
+      gameState.combo++;
+      gameState.stats.bad++;
+      showFeedback("OK", "#ff8800", closestDistance);
+    }
+    
+    gameState.maxCombo = Math.max(gameState.maxCombo, gameState.combo);
+  }
+  
+  // Penalización por presionar tecla equivocada
+  if (!hitNote) {
+    gameState.score = Math.max(0, gameState.score - 10);
+    gameState.health = Math.max(0, gameState.health - 3);
+  }
+}
+
+/* =======================
+   FEEDBACK VISUAL
+======================= */
+function showFeedback(text, color, distance = 0) {
+  feedbackMessages.push({
+    text: text,
+    color: color,
+    alpha: 1,
+    y: hitLineY - 50,
+    time: performance.now()
+  });
+}
+
+function updateFeedback(now) {
+  for (let i = feedbackMessages.length - 1; i >= 0; i--) {
+    const fb = feedbackMessages[i];
+    const age = now - fb.time;
+    
+    fb.alpha = Math.max(0, 1 - age / 800);
+    fb.y -= 1;
+    
+    if (fb.alpha <= 0) {
+      feedbackMessages.splice(i, 1);
+    }
+  }
+}
+
+function drawFeedback() {
+  feedbackMessages.forEach(fb => {
+    ctx.save();
+    ctx.globalAlpha = fb.alpha;
+    ctx.font = "bold 28px Arial";
+    ctx.fillStyle = fb.color;
+    ctx.textAlign = "center";
+    ctx.fillText(fb.text, canvas.width / 2, fb.y);
+    ctx.restore();
+  });
 }
 
 /* =======================
    GAME LOOP
 ======================= */
-let activeChart = [];
-
-function updateGame(now){
-  if(!gameRunning) return;
-
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  const currentTime = now-startTime;
-
-  if(chartIndex<activeChart.length &&
-     currentTime>=activeChart[chartIndex].time){
-    const d=activeChart[chartIndex].dir;
-    notes.push({dir:d,x:laneX[d],y:-20});
-    chartIndex++;
+function updateGame(now) {
+  if (!gameState.running) {
+    stopGame();
+    return;
   }
-
-  ctx.strokeStyle="white";
+  
+  const deltaTime = now - lastFrameTime;
+  
+  // Limitar frame rate
+  if (deltaTime < frameDelay) {
+    animationFrameId = requestAnimationFrame(updateGame);
+    return;
+  }
+  
+  lastFrameTime = now - (deltaTime % frameDelay);
+  const currentTime = now - gameState.startTime;
+  
+  // Spawn notas
+  while (gameState.chartIndex < gameState.activeChart.length &&
+         currentTime >= gameState.activeChart[gameState.chartIndex].time) {
+    const noteData = gameState.activeChart[gameState.chartIndex];
+    gameState.notes.push({
+      dir: noteData.dir,
+      x: laneX[noteData.dir],
+      y: -20
+    });
+    gameState.chartIndex++;
+  }
+  
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Dibujar carriles
+  drawLanes();
+  
+  // Dibujar línea de hit
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(0,hitLineY);
-  ctx.lineTo(canvas.width,hitLineY);
+  ctx.moveTo(0, hitLineY);
+  ctx.lineTo(canvas.width, hitLineY);
   ctx.stroke();
-
-  ctx.fillStyle="cyan";
-  for(let i=notes.length-1;i>=0;i--){
-    notes[i].y+=3;
-    ctx.fillRect(notes[i].x,notes[i].y,40,20);
-    if(notes[i].y>canvas.height) notes.splice(i,1);
+  
+  // Actualizar y dibujar notas
+  const speed = 3 * (deltaTime / frameDelay);
+  
+  for (let i = gameState.notes.length - 1; i >= 0; i--) {
+    const note = gameState.notes[i];
+    note.y += speed;
+    
+    // Dibujar nota
+    ctx.fillStyle = keyColors[note.dir];
+    ctx.fillRect(note.x - 20, note.y - 10, 40, 20);
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(note.x - 20, note.y - 10, 40, 20);
+    
+    // Eliminar notas que pasaron y romper combo
+    if (note.y > hitLineY + TIMING.miss) {
+      gameState.notes.splice(i, 1);
+      gameState.combo = 0;
+      gameState.health = Math.max(0, gameState.health - 5);
+      gameState.stats.miss++;
+      showFeedback("MISS", "#ff0000");
+    }
   }
-
-  ctx.fillStyle="white";
-  ctx.fillText("Score: "+score,10,20);
-  ctx.fillText("ESC = Menu",260,20);
-
-  requestAnimationFrame(updateGame);
+  
+  // Dibujar controles en la línea de hit
+  drawControls();
+  
+  // Actualizar y dibujar feedback
+  updateFeedback(now);
+  drawFeedback();
+  
+  // Dibujar UI
+  drawUI();
+  
+  // Check game over
+  if (gameState.health <= 0) {
+    gameState.running = false;
+    showResults();
+    return;
+  }
+  
+  // Check win condition
+  if (gameState.chartIndex >= gameState.activeChart.length && 
+      gameState.notes.length === 0) {
+    gameState.running = false;
+    showResults();
+    return;
+  }
+  
+  animationFrameId = requestAnimationFrame(updateGame);
 }
+
+/* =======================
+   DRAWING FUNCTIONS
+======================= */
+function drawLanes() {
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+  ctx.lineWidth = 1;
+  
+  laneX.forEach(x => {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
+  });
+}
+
+function drawControls() {
+  laneX.forEach((x, i) => {
+    const isPressed = keysPressed.has(keys[i]);
+    
+    // Fondo del control
+    ctx.fillStyle = isPressed ? keyColors[i] : "rgba(50, 50, 50, 0.8)";
+    ctx.fillRect(x - 25, hitLineY - 25, 50, 50);
+    
+    // Borde
+    ctx.strokeStyle = keyColors[i];
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x - 25, hitLineY - 25, 50, 50);
+    
+    // Flecha
+    ctx.fillStyle = isPressed ? "#000" : keyColors[i];
+    ctx.font = "bold 30px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(keyLabels[i], x, hitLineY);
+  });
+}
+
+function drawUI() {
+  // Score
+  ctx.fillStyle = "white";
+  ctx.font = "bold 24px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText("Score: " + gameState.score, 10, 30);
+  
+  // Combo
+  if (gameState.combo > 0) {
+    ctx.font = "bold 32px Arial";
+    ctx.fillStyle = "#ffff00";
+    ctx.textAlign = "center";
+    ctx.fillText(gameState.combo + "x COMBO", canvas.width / 2, 60);
+  }
+  
+  // Health bar
+  drawHealthBar();
+  
+  // Controls hint
+  ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+  ctx.font = "14px Arial";
+  ctx.textAlign = "right";
+  ctx.fillText("ESC = Menú", canvas.width - 10, 30);
+}
+
+function drawHealthBar() {
+  const barWidth = 200;
+  const barHeight = 20;
+  const x = canvas.width - barWidth - 20;
+  const y = 50;
+  
+  // Fondo
+  ctx.fillStyle = "#333";
+  ctx.fillRect(x, y, barWidth, barHeight);
+  
+  // Salud
+  const healthWidth = (gameState.health / MAX_HEALTH) * barWidth;
+  let color;
+  if (gameState.health > 60) color = "#00ff00";
+  else if (gameState.health > 30) color = "#ffff00";
+  else color = "#ff0000";
+  
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, healthWidth, barHeight);
+  
+  // Borde
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, barWidth, barHeight);
+  
+  // Texto
+  ctx.fillStyle = "white";
+  ctx.font = "12px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("HP", x - 20, y + barHeight / 2);
+}
+
+/* =======================
+   GAME END
+======================= */
+function stopGame() {
+  gameState.running = false;
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+}
+
+function showResults() {
+  stopGame();
+  
+  const totalNotes = gameState.stats.perfect + gameState.stats.good + 
+                     gameState.stats.bad + gameState.stats.miss;
+  const hitNotes = gameState.stats.perfect + gameState.stats.good + gameState.stats.bad;
+  const accuracy = totalNotes > 0 ? ((hitNotes / totalNotes) * 100).toFixed(1) : 0;
+  
+  // Calcular rank
+  let rank = "D";
+  if (accuracy >= 95) rank = "S";
+  else if (accuracy >= 90) rank = "A";
+  else if (accuracy >= 80) rank = "B";
+  else if (accuracy >= 70) rank = "C";
+  
+  // Actualizar UI de resultados
+  document.getElementById("rank").textContent = rank;
+  document.getElementById("finalScore").textContent = `Score: ${gameState.score}`;
+  document.getElementById("finalCombo").textContent = `Max Combo: ${gameState.maxCombo}`;
+  document.getElementById("accuracy").textContent = `Accuracy: ${accuracy}%`;
+  document.getElementById("stats").textContent = 
+    `Perfect: ${gameState.stats.perfect} | Good: ${gameState.stats.good} | Bad: ${gameState.stats.bad} | Miss: ${gameState.stats.miss}`;
+  
+  showScreen("results");
+}
+
+/* =======================
+   INIT
+======================= */
+// Cachear elementos del menú al cargar
+window.addEventListener("DOMContentLoaded", () => {
+  cachearMenuElements();
+});
 </script>
 </body>
 </html>
